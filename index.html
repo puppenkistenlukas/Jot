@@ -793,12 +793,11 @@
 
       w.innerHTML = [
         '<div><b>Clearing Jot’s memory</b></div>',
+        '<div><i>Do you really wish to delete all your jots and snapshots?</i></div>',
         '<div><br></div>',
-        '<div>Do you really wish to delete all your jots and snapshots?</div>',
+        '<div class="jot-entry" data-confirm="yes"><b>Yes</b>, delete them all.</div>',
         '<div><br></div>',
-        '<div class="jot-entry" data-confirm="yes"><b>Yes</b>, delete them all. (Press <i>Enter</i>)</div>',
-        '<div><br></div>',
-        '<div class="jot-entry" data-confirm="no"><b>No</b>, take me back. (Press <u><i>Escape</i></u>)</div>',
+        '<div class="jot-entry" data-confirm="no"><b>No</b>, take me back.</div>',
         '<div><br></div>',
         '<div><i>Hint: You can remove individual entries by deleting all their text content.</i></div>',
       ].join('');
@@ -832,7 +831,7 @@
       w.dataset.screen = 'recovery';
 
       let html = '<div><b>Recovery</b></div>';
-      html += '<div>These are snapshots of documents you recently opened.</div>';
+      html += '<div><i>These are snapshots of documents you recently opened.</i></div>';
       html += '<div><br></div>';
 
       if (backups.length) {
