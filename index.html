@@ -6,6 +6,30 @@
   <title>Jot</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23FFC800'/></svg>">
   <style>
+    /* ── iOS-only: make #editor the scroll container ────────────────────────
+       iOS Safari's caretPositionFromPoint (used for selection hit-testing)
+       breaks when window.scrollY and visualViewport.offsetTop are both
+       non-zero simultaneously (keyboard open + page scrolled). Keeping
+       window.scrollY = 0 permanently by scrolling inside #editor instead
+       eliminates the coordinate drift that makes the selection magnifier
+       disappear during vertical handle drags.
+       The .jot-ios class is added by JS on iPhone/iPad only. */
+    html.jot-ios, html.jot-ios body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+    html.jot-ios #editor {
+      height: 100%;
+      min-height: unset;
+      overflow-y: auto;
+    }
+    /* ── Tap reliability ────────────────────────────────────────────────────
+       touch-action: manipulation removes iOS's 300 ms tap-delay and makes
+       the browser treat the element as a button (immediate tap recognition).
+       Without it, slight finger movement during a tap is mis-read as a scroll
+       and the click never fires. */
+    .jot-entry, .jot-new, .jot-clear { touch-action: manipulation; }
     ::selection {
       background: rgba(0, 0, 0, 0.3);
       color: inherit;
@@ -195,6 +219,12 @@
     const editor = document.getElementById('editor');
     const blockCursor = document.getElementById('block-cursor');
 
+    // Detect iPhone / iPad (including iPad Pro which reports MacIntel).
+    // Used to enable the iOS-only scroll-container fix for selection dragging.
+    const jotIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (jotIOS) document.documentElement.classList.add('jot-ios');
+
     // Tell the browser to use <div> (not <p> or <br>) when its native Enter
     // handling fires as a fallback. Affects Firefox most visibly but is a
     // safe no-op on Chrome/Safari which also support the command.
@@ -357,14 +387,17 @@
       const lineEl = getLineEl();
       if (!lineEl) return;
       const rect = lineEl.getBoundingClientRect();
-      const vvh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      // On iOS, #editor is the scroll container; on other platforms, window is.
+      const scroller = jotIOS ? editor : window;
+      const editorTop = jotIOS ? editor.getBoundingClientRect().top : 0;
+      const vvh = editorTop + (window.visualViewport ? window.visualViewport.height : window.innerHeight);
       // Pad by 1.5 line-heights so the cursor never sits flush against the
       // bottom edge (or the top of an on-screen keyboard on mobile).
       const margin = (rect.height || 20) * 1.5;
       if (rect.bottom > vvh - margin) {
-        window.scrollBy(0, rect.bottom - (vvh - margin));
-      } else if (rect.top < 0) {
-        window.scrollBy(0, rect.top - margin);
+        scroller.scrollBy(0, rect.bottom - (vvh - margin));
+      } else if (rect.top < editorTop + margin) {
+        scroller.scrollBy(0, rect.top - editorTop - margin);
       }
     }
 
@@ -674,6 +707,7 @@
       const w = document.getElementById('jot-welcome');
       if (w) w.remove();
       editor.innerHTML = entry.html;
+      editor.scrollTop = 0;
       jotCurrentId = entry.id;
       editor.focus();
       const first = editor.firstChild;
@@ -692,6 +726,7 @@
       if (w) w.remove();
       jotCurrentId = null;
       editor.innerHTML = '<div><br></div>';
+      editor.scrollTop = 0;
       editor.focus();
       const first = editor.firstChild;
       if (first) {
