@@ -6,30 +6,6 @@
   <title>Jot</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23FFC800'/></svg>">
   <style>
-    /* ── iOS-only: make #editor the scroll container ────────────────────────
-       iOS Safari's caretPositionFromPoint (used for selection hit-testing)
-       breaks when window.scrollY and visualViewport.offsetTop are both
-       non-zero simultaneously (keyboard open + page scrolled). Keeping
-       window.scrollY = 0 permanently by scrolling inside #editor instead
-       eliminates the coordinate drift that makes the selection magnifier
-       disappear during vertical handle drags.
-       The .jot-ios class is added by JS on iPhone/iPad only. */
-    html.jot-ios, html.jot-ios body {
-      height: 100%;
-      margin: 0;
-      overflow: hidden;
-    }
-    html.jot-ios #editor {
-      height: 100%;
-      min-height: unset;
-      overflow-y: auto;
-    }
-    /* ── Tap reliability ────────────────────────────────────────────────────
-       touch-action: manipulation removes iOS's 300 ms tap-delay and makes
-       the browser treat the element as a button (immediate tap recognition).
-       Without it, slight finger movement during a tap is mis-read as a scroll
-       and the click never fires. */
-    .jot-entry, .jot-new, .jot-clear { touch-action: manipulation; }
     ::selection {
       background: rgba(0, 0, 0, 0.3);
       color: inherit;
@@ -45,10 +21,6 @@
       overflow-wrap: break-word;
       /* Suppress the iOS Cut/Copy/Paste/AutoFill callout on long-press */
       -webkit-touch-callout: none;
-      /* Explicit user-select fixes iOS WebKit's hit-test coordinate drift
-         during vertical text-selection dragging in contenteditable. */
-      -webkit-user-select: text;
-      user-select: text;
     }
     #block-cursor {
       position: fixed;
@@ -96,9 +68,8 @@
       z-index: 100;
       overflow-wrap: break-word;
     }
-    /* Contain scroll on welcome/confirm so it doesn't bleed to the editor.
-       Recovery is excluded so the browser's pull-to-refresh works normally. */
-    #jot-welcome:not([data-screen="recovery"]) {
+    /* Contain scroll on welcome/confirm so it doesn't bleed to the editor. */
+    #jot-welcome {
       overscroll-behavior: contain;
     }
     .jot-entry { cursor: pointer; }
@@ -222,12 +193,6 @@
     const editor = document.getElementById('editor');
     const blockCursor = document.getElementById('block-cursor');
 
-    // Detect iPhone / iPad (including iPad Pro which reports MacIntel).
-    // Used to enable the iOS-only scroll-container fix for selection dragging.
-    const jotIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    if (jotIOS) document.documentElement.classList.add('jot-ios');
-
     // Tell the browser to use <div> (not <p> or <br>) when its native Enter
     // handling fires as a fallback. Affects Firefox most visibly but is a
     // safe no-op on Chrome/Safari which also support the command.
@@ -256,18 +221,8 @@
       return r.height > 0 ? { left: r.left, top: r.top, height: r.height } : null;
     }
 
-    // Set true for the duration of any touch on the editor. While a touch is
-    // active, iOS shows its own magnifier/selection UI — we pause the block-
-    // cursor RAF loop so getCaretRect's DOM-mutation fallback (span insert +
-    // remove at 60 fps) cannot corrupt iOS's internal touch-selection state,
-    // which is what causes the magnifier to disappear mid-drag.
-    let _touching = false;
-
     function updateCursor() {
-      // Also suppress while any overlay is visible: getCaretRect's span-insert
-      // fallback runs at 60 fps and its DOM mutations disrupt iOS touch handling
-      // on the welcome/recovery/confirm screens (which sit above the editor).
-      if (_touching || document.activeElement !== editor || document.getElementById('jot-welcome')) {
+      if (document.activeElement !== editor) {
         blockCursor.style.display = 'none';
         return;
       }
@@ -393,17 +348,14 @@
       const lineEl = getLineEl();
       if (!lineEl) return;
       const rect = lineEl.getBoundingClientRect();
-      // On iOS, #editor is the scroll container; on other platforms, window is.
-      const scroller = jotIOS ? editor : window;
-      const editorTop = jotIOS ? editor.getBoundingClientRect().top : 0;
-      const vvh = editorTop + (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+      const vvh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       // Pad by 1.5 line-heights so the cursor never sits flush against the
       // bottom edge (or the top of an on-screen keyboard on mobile).
       const margin = (rect.height || 20) * 1.5;
       if (rect.bottom > vvh - margin) {
-        scroller.scrollBy(0, rect.bottom - (vvh - margin));
-      } else if (rect.top < editorTop + margin) {
-        scroller.scrollBy(0, rect.top - editorTop - margin);
+        window.scrollBy(0, rect.bottom - (vvh - margin));
+      } else if (rect.top < 0) {
+        window.scrollBy(0, rect.top - margin);
       }
     }
 
@@ -669,9 +621,7 @@
         firstLine: entry.firstLine,
         openedAt: new Date().toISOString()
       });
-      // Wrap setItem: a QuotaExceededError (large entries / full storage) must
-      // not propagate — an unsaved backup is acceptable; a crashed open is not.
-      try { localStorage.setItem(JOT_BACKUP_KEY, JSON.stringify(backups.slice(0, 10))); } catch (_) {}
+      localStorage.setItem(JOT_BACKUP_KEY, JSON.stringify(backups.slice(0, 10)));
     }
 
     let jotCurrentId = null;
@@ -711,14 +661,10 @@
     }
 
     function jotOpenEntry(entry) {
-      // Defer backup so the storage write never blocks the tap response.
-      // The welcome screen is removed synchronously first, making the open
-      // feel instant even if the entry is large.
-      setTimeout(() => jotBackup(entry), 0);
+      jotBackup(entry);
       const w = document.getElementById('jot-welcome');
       if (w) w.remove();
       editor.innerHTML = entry.html;
-      editor.scrollTop = 0;
       jotCurrentId = entry.id;
       editor.focus();
       const first = editor.firstChild;
@@ -737,7 +683,6 @@
       if (w) w.remove();
       jotCurrentId = null;
       editor.innerHTML = '<div><br></div>';
-      editor.scrollTop = 0;
       editor.focus();
       const first = editor.firstChild;
       if (first) {
@@ -780,7 +725,7 @@
         html += '<div class="jot-clear">Press Backspace to clear all these entries.</div>';
       }
 
-      html += '<div><br></div><div><u>v8</u></div><div><u>Lukas Henning 18/05/2026</u></div><div><br></div>';
+      html += '<div><br></div><div><u>v7</u></div><div><u>Lukas Henning 18/05/2026</u></div><div><br></div>';
       w.innerHTML = html;
       document.body.appendChild(w);
       w.scrollTop = 0;
@@ -1394,11 +1339,6 @@
     // Swipe right  →  Tab   (indent list item)
     // Swipe left   →  Shift+Tab  (unindent list item)
     // Gated to touch devices; passive listeners so scroll is never blocked.
-    // Track touch state on all pointer-coarse devices (for _touching above).
-    editor.addEventListener('touchstart', () => { _touching = true;  }, { passive: true });
-    editor.addEventListener('touchend',   () => { _touching = false; }, { passive: true });
-    editor.addEventListener('touchcancel',() => { _touching = false; }, { passive: true });
-
     if (window.matchMedia('(pointer: coarse)').matches) {
       let _swipeX = 0, _swipeY = 0, _swipeT = 0;
 
