@@ -699,6 +699,9 @@
       jotToolbarHide();
       const cleaned = entries.filter(e => e.firstLine && e.firstLine.trim());
       if (cleaned.length !== entries.length) jotPersist(cleaned);
+      // Nothing to show → seed the feature doc and reload so the user lands on
+      // a populated start screen rather than a blank one.
+      if (!cleaned.length) { jotSeedFeatures(); location.reload(); return; }
       const sorted = [...cleaned].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       const _existing = document.getElementById('jot-welcome');
       if (_existing) _existing.remove();
