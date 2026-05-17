@@ -885,7 +885,7 @@
           const dt = Date.now() - _rSwipeT;
           const startX = _rSwipeX;
           _rSwipeX = 0;
-          if (dx < 60 || Math.abs(dx) <= Math.abs(dy) * 1.5 || dt >= 400 || startX >= 25) return;
+          if (dx < 60 || Math.abs(dx) <= Math.abs(dy) * 1.5 || dt >= 400 || startX >= 60) return;
           jotShowWelcome(jotLoad());
         }, { passive: true });
       }
@@ -1383,7 +1383,7 @@
         if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy) * 1.5 || dt >= 400) return;
         // Left-edge back gesture: started within 25 px of screen left and
         // swiped right → treat as "back" (same as Escape / doEscape).
-        if (dx > 0 && startX < 25) { doEscape(); return; }
+        if (dx > 0 && startX < 60) { doEscape(); return; }
         if (dx > 0) doTab(false); // right → indent
         else        doTab(true);  // left  → unindent
       }, { passive: true });
