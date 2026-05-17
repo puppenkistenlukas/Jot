@@ -868,6 +868,27 @@
           sel.addRange(r);
         }
       });
+
+      // Left-edge swipe right → back to start screen (touch devices only).
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        let _rSwipeX = 0, _rSwipeY = 0, _rSwipeT = 0;
+        w.addEventListener('touchstart', e => {
+          if (e.touches.length !== 1) { _rSwipeX = 0; return; }
+          _rSwipeX = e.touches[0].clientX;
+          _rSwipeY = e.touches[0].clientY;
+          _rSwipeT = Date.now();
+        }, { passive: true });
+        w.addEventListener('touchend', e => {
+          if (!_rSwipeX || e.changedTouches.length !== 1) return;
+          const dx = e.changedTouches[0].clientX - _rSwipeX;
+          const dy = e.changedTouches[0].clientY - _rSwipeY;
+          const dt = Date.now() - _rSwipeT;
+          const startX = _rSwipeX;
+          _rSwipeX = 0;
+          if (dx < 60 || Math.abs(dx) <= Math.abs(dy) * 1.5 || dt >= 400 || startX >= 25) return;
+          jotShowWelcome(jotLoad());
+        }, { passive: true });
+      }
     }
 
     // Init
@@ -1336,8 +1357,9 @@
     // rather than silently swallowing the keystroke. Chrome, Safari, and Firefox
     // all benefit from this guard.
     // ── Swipe gestures (mobile / tablet only) ────────────────────────────────
-    // Swipe right  →  Tab   (indent list item)
-    // Swipe left   →  Shift+Tab  (unindent list item)
+    // Left-edge swipe right  →  back to start screen (like browser back)
+    // Swipe right            →  Tab   (indent list item)
+    // Swipe left             →  Shift+Tab  (unindent list item)
     // Gated to touch devices; passive listeners so scroll is never blocked.
     if (window.matchMedia('(pointer: coarse)').matches) {
       let _swipeX = 0, _swipeY = 0, _swipeT = 0;
@@ -1354,10 +1376,14 @@
         const dx = e.changedTouches[0].clientX - _swipeX;
         const dy = e.changedTouches[0].clientY - _swipeY;
         const dt = Date.now() - _swipeT;
+        const startX = _swipeX;
         _swipeX = 0; // reset so a multi-touch release doesn't re-trigger
         // Must be: clearly horizontal (|dx| > 1.5×|dy|), at least 60 px,
         // and quick (< 400 ms) to distinguish from a slow selection drag.
         if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy) * 1.5 || dt >= 400) return;
+        // Left-edge back gesture: started within 25 px of screen left and
+        // swiped right → treat as "back" (same as Escape / doEscape).
+        if (dx > 0 && startX < 25) { doEscape(); return; }
         if (dx > 0) doTab(false); // right → indent
         else        doTab(true);  // left  → unindent
       }, { passive: true });
