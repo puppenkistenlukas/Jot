@@ -95,7 +95,10 @@
       overflow-y: auto;
       z-index: 100;
       overflow-wrap: break-word;
-      /* Prevent touch-scroll from bleeding through to the editor behind it */
+    }
+    /* Contain scroll on welcome/confirm so it doesn't bleed to the editor.
+       Recovery is excluded so the browser's pull-to-refresh works normally. */
+    #jot-welcome:not([data-screen="recovery"]) {
       overscroll-behavior: contain;
     }
     .jot-entry { cursor: pointer; }
@@ -261,7 +264,10 @@
     let _touching = false;
 
     function updateCursor() {
-      if (_touching || document.activeElement !== editor) {
+      // Also suppress while any overlay is visible: getCaretRect's span-insert
+      // fallback runs at 60 fps and its DOM mutations disrupt iOS touch handling
+      // on the welcome/recovery/confirm screens (which sit above the editor).
+      if (_touching || document.activeElement !== editor || document.getElementById('jot-welcome')) {
         blockCursor.style.display = 'none';
         return;
       }
@@ -663,7 +669,9 @@
         firstLine: entry.firstLine,
         openedAt: new Date().toISOString()
       });
-      localStorage.setItem(JOT_BACKUP_KEY, JSON.stringify(backups.slice(0, 10)));
+      // Wrap setItem: a QuotaExceededError (large entries / full storage) must
+      // not propagate — an unsaved backup is acceptable; a crashed open is not.
+      try { localStorage.setItem(JOT_BACKUP_KEY, JSON.stringify(backups.slice(0, 10))); } catch (_) {}
     }
 
     let jotCurrentId = null;
@@ -703,7 +711,10 @@
     }
 
     function jotOpenEntry(entry) {
-      jotBackup(entry);
+      // Defer backup so the storage write never blocks the tap response.
+      // The welcome screen is removed synchronously first, making the open
+      // feel instant even if the entry is large.
+      setTimeout(() => jotBackup(entry), 0);
       const w = document.getElementById('jot-welcome');
       if (w) w.remove();
       editor.innerHTML = entry.html;
@@ -769,7 +780,7 @@
         html += '<div class="jot-clear">Press Backspace to clear all these entries.</div>';
       }
 
-      html += '<div><br></div><div><u>v7</u></div><div><u>Lukas Henning 18/05/2026</u></div><div><br></div>';
+      html += '<div><br></div><div><u>v8</u></div><div><u>Lukas Henning 18/05/2026</u></div><div><br></div>';
       w.innerHTML = html;
       document.body.appendChild(w);
       w.scrollTop = 0;
