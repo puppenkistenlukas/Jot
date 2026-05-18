@@ -4,25 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jot</title>
-  <link rel="icon" id="jot-favicon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23FFC800'/></svg>">
-  <script>
-    (function () {
-      var png = 'https://raw.githubusercontent.com/puppenkistenlukas/Jot/main/jot_logo_v7.png';
-      var img = new Image();
-      img.onload = function () {
-        // Mutating href on an existing <link> is ignored by most browsers.
-        // Remove the old element and append a fresh one to force a re-evaluation.
-        var old = document.getElementById('jot-favicon');
-        if (old) old.parentNode.removeChild(old);
-        var link = document.createElement('link');
-        link.rel = 'icon';
-        link.type = 'image/png';
-        link.href = png;
-        document.head.appendChild(link);
-      };
-      img.src = png;
-    })();
-  </script>
+  <link rel="icon" type="image/png" href="jot_logo_v7.png">
+  <!-- <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23FFC800'/></svg>"> -->
   <style>
     ::selection {
       background: rgba(0, 0, 0, 0.3);
