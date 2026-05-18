@@ -10,8 +10,15 @@
       var png = 'https://raw.githubusercontent.com/puppenkistenlukas/Jot/main/jot_logo_v7.png';
       var img = new Image();
       img.onload = function () {
-        var el = document.getElementById('jot-favicon');
-        if (el) { el.type = 'image/png'; el.href = png; }
+        // Mutating href on an existing <link> is ignored by most browsers.
+        // Remove the old element and append a fresh one to force a re-evaluation.
+        var old = document.getElementById('jot-favicon');
+        if (old) old.parentNode.removeChild(old);
+        var link = document.createElement('link');
+        link.rel = 'icon';
+        link.type = 'image/png';
+        link.href = png;
+        document.head.appendChild(link);
       };
       img.src = png;
     })();
