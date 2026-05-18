@@ -4,7 +4,18 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jot</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23FFC800'/></svg>">
+  <link rel="icon" id="jot-favicon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%23FFC800'/></svg>">
+  <script>
+    (function () {
+      var png = 'https://raw.githubusercontent.com/puppenkistenlukas/Jot/main/jot_logo_v7.png';
+      var img = new Image();
+      img.onload = function () {
+        var el = document.getElementById('jot-favicon');
+        if (el) { el.type = 'image/png'; el.href = png; }
+      };
+      img.src = png;
+    })();
+  </script>
   <style>
     ::selection {
       background: rgba(0, 0, 0, 0.3);
