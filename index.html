@@ -189,6 +189,40 @@
     </div>
   </div>
 
+  <!-- Default "Jot Features" document — stored as plain markup so it reads
+       and edits like any other Jot document. jotSeedFeatures() reads
+       this template's innerHTML directly; no JS string escaping needed. -->
+  <template id="jot-features-tpl">
+    <div><b>Jot Features</b></div>
+    <div><i>Jot is a lightweight text editor that lives in one HTML file. It offers simple formatting, indented lists, continuously backs up your work in localStorage and exports itself into every document you save.</i></div>
+    <div><br></div>
+    <div class="list-line" style="--level: 0;"><u>Save</u> any Jot document as HTML to export your document as a local file. You can continue work on the exported file, but it no longer backs up.</div>
+    <div><br></div>
+    <div class="list-line" style="--level: 0;">You can&nbsp;<b>bold</b>&nbsp;text, <i>italicise</i> or <u>underline</u> to highlight it.<br></div>
+    <div><br></div>
+    <div class="list-line" style="--level: 0;">Select Text and paste an URL to create a <a href="https://github.com/puppenkistenlukas/Jot" target="_blank" rel="noopener noreferrer">hyperlink</a>.&nbsp;&nbsp;</div>
+    <div><br></div>
+    <div class="list-line" style="--level: 0;">Press <u>-</u>, <u>+</u> or <u>&gt;</u> at the very beginning of a line to create a list item or change its bullet style.</div>
+    <div class="list-line" style="--level: 1;" data-bullet="plus">Press <u>Tab</u> to increase a list item's indent level...</div>
+    <div class="list-line" style="--level: 2;" data-bullet="arrow">... like so.</div>
+    <div class="list-line" style="--level: 3;" data-bullet="plus">This works on multiple levels.</div>
+    <div class="list-line" style="--level: 2;" data-bullet="arrow"><u>Shift &amp; Tab</u> decreases the indent level.</div>
+    <div><br></div>
+    <div>Press <u>Backspace</u>&nbsp;or <u>Enter</u> at the very beginning of a list item to turn it into a regular line of text.</div>
+    <div><br></div>
+    <div>Use <u>Tab</u> in regular (<i>non-list</i>) lines to create simple tables like so:</div>
+    <div><br></div>
+    <div><b>Player&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Score&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Rounds&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Text</b></div>
+    <div>Lukas&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;19&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Hi!</div>
+    <div>Muriel&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;29&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;3</div>
+    <div>Bacon&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;07&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(°œ°)</div>
+    <div><br></div>
+    <div>Every new JOT document creates a <b>local backup</b> in your browser's storage. Open a new Jot window or tab to view, open or clear entries. Access an overview with <u>Escape</u>. Completely empty documents disappear from the list. <b>Recovery</b> holds snapshots of the ten last documents you opened, in case there's an accident.</div>
+    <div><br></div>
+    <div><b><i>Pro tip:</i></b> <i>Try pasting images or web content into your Jot 🪄</i></div>
+    <div><br></div>
+  </template>
+
   <script>
     const editor = document.getElementById('editor');
     const blockCursor = document.getElementById('block-cursor');
@@ -412,6 +446,7 @@
 
     function doEscape() {
       if (jotExported) return;
+      if (jotFromRecovery) { jotFromRecovery = false; jotShowRecovery(); return; }
       jotSaveCurrent();
       jotShowWelcome(jotLoad());
     }
@@ -626,6 +661,7 @@
 
     let jotCurrentId = null;
     let jotExported = false;
+    let jotFromRecovery = false; // true while a Recovery snapshot is open
 
     function jotFirstLine() {
       return (editor.children[0] || { textContent: '' }).textContent.trim();
@@ -666,6 +702,7 @@
       if (w) w.remove();
       editor.innerHTML = entry.html;
       jotCurrentId = entry.id;
+      jotFromRecovery = false;
       editor.focus();
       const first = editor.firstChild;
       if (first) {
@@ -682,6 +719,7 @@
       const w = document.getElementById('jot-welcome');
       if (w) w.remove();
       jotCurrentId = null;
+      jotFromRecovery = false;
       editor.innerHTML = '<div><br></div>';
       editor.focus();
       const first = editor.firstChild;
@@ -753,34 +791,7 @@
 
     function jotSeedFeatures() {
       const now = new Date().toISOString();
-      const featHtml = [
-        '<div><b>Jot Features</b></div>',
-        '<div><i>Jot is a lightweight text editor that lives in one HTML file. It offers simple formatting, indented lists, continuously backs up your work in localStorage and exports to portable files.</i></div>',
-        '<div><br></div>',
-        '<div class="list-line" style="--level: 0;"><u>Save</u> any Jot page as HTML to export your document as a local file. You can continue work on the exported file, but it no longer backs up.</div>',
-        '<div><br></div>',
-        '<div class="list-line" style="--level: 0;">You can\u00a0<b>bold</b>\u00a0text, <i>italicise</i> or <u>underline</u> to highlight it.</div>',
-        '<div><br></div>',
-        '<div class="list-line" style="--level: 0;">Press <u>-</u>, <u>+</u> or <u>&gt;</u> at the very beginning of a line to create a list item or change its bullet style.</div>',
-        '<div class="list-line" style="--level: 1;">Press <u>Tab</u> to increase a list item\u2019s indent level...</div>',
-        '<div class="list-line" style="--level: 2;" data-bullet="arrow">... like so.</div>',
-        '<div class="list-line" style="--level: 3;" data-bullet="plus">This works on multiple levels.</div>',
-        '<div class="list-line" style="--level: 2;" data-bullet="arrow"><u>Shift &amp; Tab</u> decreases the indent level.</div>',
-        '<div><br></div>',
-        '<div>Press <u>Backspace</u> at the very beginning of a list item to turn it into a regular line of text.</div>',
-        '<div><br></div>',
-        '<div>Use <u>Tab</u> in regular (<i>non-list</i>) lines to create simple tables like so:</div>',
-        '<div><br></div>',
-        '<div><b>Player\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0Score\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0Rounds\u00a0\u00a0\u00a0\u00a0\u00a0Text</b></div>',
-        '<div>Lukas\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a019\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a02\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0Hi!</div>',
-        '<div>Muriel\u00a0\u00a0\u00a0\u00a0\u00a0\u00a029\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a02\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0&lt;3</div>',
-        '<div>Bacon\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a007\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a01\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0\u00a0(\u00b0\u0153\u00b0)</div>',
-        '<div><br></div>',
-        '<div>Every new JOT document creates a <b>local backup</b> in your browser\u2019s storage. Open a new JOT window or tab to view, open or clear entries. Access an overview with <u>Escape</u>. Completely empty documents disappear from the list.</div>',
-        '<div><br></div>',
-        '<div><b><i>Pro tip:</i></b> <i>Try pasting images or web content into your Jot document 🪄</i></div>',
-        '<div><br></div>',
-      ].join('');
+      const featHtml = document.getElementById('jot-features-tpl').innerHTML;
       const entries = [{ id: now + '_features', html: featHtml, firstLine: 'Jot Features', createdAt: now, updatedAt: now }];
       jotPersist(entries);
       return entries;
@@ -859,6 +870,7 @@
         w.remove();
         editor.innerHTML = backup.html;
         jotCurrentId = null;
+        jotFromRecovery = true;
         editor.focus();
         const first = editor.firstChild;
         if (first) {
@@ -962,8 +974,7 @@
         }
       } else if (e.key === 'Escape' && !jotExported) {
         e.preventDefault();
-        jotSaveCurrent();
-        jotShowWelcome(jotLoad());
+        doEscape();
       }
     });
 
