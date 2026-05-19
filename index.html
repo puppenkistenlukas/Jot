@@ -515,10 +515,9 @@
 
             // ── Replenish native UNDO stack ──────────────────────────────────
             // insertText adds one entry to the native undo stack and clears
-            // the native redo stack. We then strip the ZWS directly from the
-            // DOM (no execCommand → no second native entry), so the content
-            // stays identical to state.html while the native undo stack gains
-            // one token iOS can pop on the next undo gesture.
+            // the native redo stack. Stripping the ZWS directly from the DOM
+            // (via TreeWalker, not execCommand) leaves the content at state.html
+            // without adding a second entry — so native undo gains one token.
             _cursorToStart();
             document.execCommand('insertText', false, '​');
             const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
@@ -528,10 +527,25 @@
                 node.textContent = node.textContent.replace(/​/g, '');
             }
 
+            // ── Replenish native REDO stack ──────────────────────────────────
+            // Insert a second ZWS, then immediately call execCommand('undo').
+            // That moves the ZWS entry from native undo → native redo and
+            // restores the DOM to state.html, giving iOS a redo token to fire
+            // historyRedo on (so the redo gesture and keyboard-accessory button
+            // stay enabled). The beforeinput handler lets this programmatic
+            // undo through (returns early) while _undoApplying is true, so our
+            // custom _doUndo() is not triggered. _undoApplying is released in a
+            // nested setTimeout so any async historyUndo that execCommand('undo')
+            // might dispatch also arrives while the gate is still up.
+            _cursorToStart();
+            document.execCommand('insertText', false, '​');
+            document.execCommand('undo');
+
           } catch (_) {}
-          _undoApplying = false;
-          // Restore cursor to the snapshot's saved position.
+          // Restore cursor, then release the gate one task later so any async
+          // beforeinput from execCommand('undo') still sees _undoApplying = true.
           _undoSetCur(state.cur);
+          setTimeout(() => { _undoApplying = false; }, 0);
         }, 0);
       }
     }
