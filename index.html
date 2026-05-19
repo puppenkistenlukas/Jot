@@ -500,24 +500,41 @@
         setTimeout(() => {
           try {
             editor.focus();
-            // Place cursor at start of first child so the ZWS is inserted at a
-            // predictable location (rather than wherever iOS put the caret).
-            const first = editor.firstChild;
-            if (first) {
+            // Helper: place cursor at the very start of the editor.
+            function _cursorToStart() {
+              const el = editor.firstChild;
+              if (!el) return;
               const r = document.createRange();
-              r.setStart(first, 0);
+              r.setStart(el, 0);
               r.collapse(true);
               window.getSelection().removeAllRanges();
               window.getSelection().addRange(r);
             }
+
+            // ── Replenish native UNDO stack ──────────────────────────────────
+            // insertText adds one entry to the native undo stack and clears
+            // the native redo stack. We then strip the ZWS directly from the
+            // DOM (no execCommand → no second native entry), so the content
+            // stays identical to state.html while the native undo stack gains
+            // one token iOS can pop on the next undo gesture.
+            _cursorToStart();
             document.execCommand('insertText', false, '​');
-            // Strip ZWS without execCommand (no new native entry on the stack).
             const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
             let node;
             while ((node = walker.nextNode())) {
               if (node.textContent.includes('​'))
                 node.textContent = node.textContent.replace(/​/g, '');
             }
+
+            // ── Replenish native REDO stack ──────────────────────────────────
+            // Insert a second ZWS, then immediately call execCommand('undo').
+            // The browser moves that entry from the native undo stack to the
+            // native redo stack and restores the DOM to state.html. Our
+            // beforeinput handler is gated by _undoApplying so it will not
+            // intercept the programmatic undo and call _doUndo().
+            _cursorToStart();
+            document.execCommand('insertText', false, '​');
+            document.execCommand('undo');
           } catch (_) {}
           _undoApplying = false;
           // Restore cursor to the snapshot's saved position.
@@ -1683,11 +1700,16 @@
       // gesture can dispatch many events in rapid succession. Debounce to 80 ms so
       // the entire burst counts as one step in our custom stack.
       if (e.inputType === 'historyUndo') {
+        // During ZWS replenishment, execCommand('undo') may fire this event
+        // programmatically. Let it pass so the browser natively undoes the ZWS
+        // insertion (restoring state.html) without touching our custom stack.
+        if (_undoApplying) return;
         e.preventDefault();
         clearTimeout(_historyGestureTimer);
         _historyGestureTimer = setTimeout(() => { _historyGestureTimer = null; _doUndo(); }, 80);
         return;
       } else if (e.inputType === 'historyRedo') {
+        if (_undoApplying) return;
         e.preventDefault();
         clearTimeout(_historyGestureTimer);
         _historyGestureTimer = setTimeout(() => { _historyGestureTimer = null; _doRedo(); }, 80);
