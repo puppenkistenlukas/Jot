@@ -166,7 +166,7 @@
         color: inherit;
       }
       #editor u {
-        background: rgba(255, 200, 0, 0.2);
+        background: rgba(255, 200, 0, 0.6);
       }
       #jot-welcome {
         background: #111;
@@ -396,7 +396,140 @@
       }
     }
 
+    // ── Custom undo / redo ───────────────────────────────────────────────────
+    // The browser's native undo only tracks execCommand and keyboard input.
+    // Our DOM operations (list toggling, Enter splits, Tab, paste) bypass it,
+    // so undo either does nothing or partially restores state. We intercept
+    // Cmd+Z / Cmd+Shift+Z / Cmd+Y and mobile historyUndo/Redo beforeinput
+    // events, and manage our own HTML + {line,col} cursor snapshots.
+    const _undoStack = [];   // [{html, cur:{line,col}}]
+    const _redoStack = [];
+    let   _undoTimer  = null;
+
+    // Save cursor as {line index in editor.children, col within that line}.
+    // Line-scoped col avoids the flat-char-offset ambiguity at div boundaries.
+    function _undoCurPos() {
+      const sel = window.getSelection();
+      if (!sel || !sel.rangeCount) return { line: 0, col: 0 };
+      const range = sel.getRangeAt(0);
+      const lineEl = getLineEl();
+      if (!lineEl) return { line: 0, col: 0 };
+      const line = Array.from(editor.children).indexOf(lineEl);
+      try {
+        const r = document.createRange();
+        r.setStart(lineEl, 0);
+        r.setEnd(range.startContainer, range.startOffset);
+        return { line: Math.max(0, line), col: r.toString().length };
+      } catch { return { line: Math.max(0, line), col: 0 }; }
+    }
+
+    // Restore cursor to a saved {line, col} position.
+    function _undoSetCur(pos) {
+      if (!pos) return;
+      const lineEl = editor.children[pos.line] || editor.children[editor.children.length - 1];
+      if (!lineEl) return;
+      const walker = document.createTreeWalker(lineEl, NodeFilter.SHOW_TEXT);
+      let node, rem = pos.col;
+      while ((node = walker.nextNode())) {
+        const len = node.textContent.length;
+        if (rem <= len) {
+          try {
+            const r = document.createRange();
+            r.setStart(node, rem);
+            r.collapse(true);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(r);
+          } catch {}
+          return;
+        }
+        rem -= len;
+      }
+      // Fallback: start of the line element
+      try {
+        const r = document.createRange();
+        r.setStart(lineEl, 0);
+        r.collapse(true);
+        window.getSelection().removeAllRanges();
+        window.getSelection().addRange(r);
+      } catch {}
+    }
+
+    // Push a snapshot before any custom DOM operation.
+    // Cancels the debounced input timer so typing + a custom op
+    // don't split into two tiny undo steps.
+    function jotUndoSnap() {
+      clearTimeout(_undoTimer);
+      _undoTimer = null;
+      const state = { html: editor.innerHTML, cur: _undoCurPos() };
+      const last = _undoStack[_undoStack.length - 1];
+      if (last && last.html === state.html) return; // deduplicate
+      _undoStack.push(state);
+      if (_undoStack.length > 200) _undoStack.shift();
+      _redoStack.length = 0;
+    }
+
+    // Flush a pending input-debounce snapshot without clearing the redo branch.
+    function _undoFlush() {
+      if (!_undoTimer) return;
+      clearTimeout(_undoTimer);
+      _undoTimer = null;
+      const state = { html: editor.innerHTML, cur: _undoCurPos() };
+      const last = _undoStack[_undoStack.length - 1];
+      if (!last || last.html !== state.html) {
+        _undoStack.push(state);
+        if (_undoStack.length > 200) _undoStack.shift();
+      }
+    }
+
+    function _undoApply(state) {
+      editor.innerHTML = state.html;
+      _undoSetCur(state.cur);
+      clearTimeout(jotTimer);
+      if (jotCurrentId) jotTimer = setTimeout(jotSaveCurrent, 500);
+    }
+
+    // Perform one undo step. Handles two cases:
+    //  • Current HTML matches the stack top (normal case after debounced flush):
+    //    pop top to redo, apply the entry below it.
+    //  • Current HTML differs from stack top (operation ran but post-op state
+    //    was never pushed — e.g. Enter pressed then immediately Cmd+Z):
+    //    push current directly to redo, then restore the stack top.
+    function _doUndo() {
+      _undoFlush();
+      if (!_undoStack.length) return;
+      const curHtml = editor.innerHTML;
+      const top = _undoStack[_undoStack.length - 1];
+      if (top.html !== curHtml) {
+        // Un-checkpointed current state → save to redo, restore checkpoint
+        _redoStack.push({ html: curHtml, cur: _undoCurPos() });
+        _undoApply(top);
+      } else if (_undoStack.length > 1) {
+        _redoStack.push(_undoStack.pop());
+        _undoApply(_undoStack[_undoStack.length - 1]);
+      }
+    }
+
+    function _doRedo() {
+      if (!_redoStack.length) return;
+      const state = _redoStack.pop();
+      const curHtml = editor.innerHTML;
+      const top = _undoStack[_undoStack.length - 1];
+      if (!top || top.html !== curHtml) {
+        _undoStack.push({ html: curHtml, cur: _undoCurPos() });
+        if (_undoStack.length > 200) _undoStack.shift();
+      }
+      _undoApply(state);
+    }
+
+    function jotUndoClear() {
+      _undoStack.length = 0;
+      _redoStack.length = 0;
+      clearTimeout(_undoTimer);
+      _undoTimer = null;
+    }
+
     function doTab(shift) {
+      jotUndoSnap();
       const lineEl = getLineEl();
       if (!lineEl) return;
       const isList = lineEl.classList.contains('list-line');
@@ -477,6 +610,18 @@
         return;
       }
 
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        _doUndo();
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        _doRedo();
+        return;
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         if (jotExported) {
           // Exported file: set title to the HTML filename right now so the
@@ -502,19 +647,19 @@
 
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault();
-        jotAllowFormat = true; document.execCommand('bold'); jotAllowFormat = false;
+        jotUndoSnap(); jotAllowFormat = true; document.execCommand('bold'); jotAllowFormat = false;
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && e.key === 'i') {
         e.preventDefault();
-        jotAllowFormat = true; document.execCommand('italic'); jotAllowFormat = false;
+        jotUndoSnap(); jotAllowFormat = true; document.execCommand('italic'); jotAllowFormat = false;
         return;
       }
 
       if ((e.metaKey || e.ctrlKey) && e.key === 'u') {
         e.preventDefault();
-        jotAllowFormat = true; doUnderline(); jotAllowFormat = false;
+        jotUndoSnap(); jotAllowFormat = true; doUnderline(); jotAllowFormat = false;
         return;
       }
 
@@ -524,6 +669,7 @@
 
       if (e.key === '-' && isAtStart(lineEl)) {
         e.preventDefault();
+        jotUndoSnap();
         if (!isList) { lineEl.classList.add('list-line'); setLevel(lineEl, 0); }
         lineEl.removeAttribute('data-bullet');
         return;
@@ -531,6 +677,7 @@
 
       if (e.key === '>' && isAtStart(lineEl)) {
         e.preventDefault();
+        jotUndoSnap();
         if (!isList) { lineEl.classList.add('list-line'); setLevel(lineEl, 0); }
         lineEl.dataset.bullet = 'arrow';
         return;
@@ -538,6 +685,7 @@
 
       if (e.key === '+' && isAtStart(lineEl)) {
         e.preventDefault();
+        jotUndoSnap();
         if (!isList) { lineEl.classList.add('list-line'); setLevel(lineEl, 0); }
         lineEl.dataset.bullet = 'plus';
         return;
@@ -552,6 +700,7 @@
       if (e.key === 'Enter' && !isList && !e.shiftKey) {
         _jotEnterHandled = true;
         e.preventDefault();
+        jotUndoSnap();
         const sel = window.getSelection();
         const range = sel.getRangeAt(0);
         range.deleteContents();
@@ -576,6 +725,7 @@
 
       if (e.key === 'Backspace' && isAtStart(lineEl)) {
         e.preventDefault();
+        jotUndoSnap();
         lineEl.classList.remove('list-line');
         lineEl.style.removeProperty('--level');
         return;
@@ -584,6 +734,7 @@
       if (e.key === 'Enter' && e.shiftKey) {
         _jotEnterHandled = true;
         e.preventDefault();
+        jotUndoSnap();
         const sel = window.getSelection();
         const range = sel.getRangeAt(0);
         range.deleteContents();
@@ -604,6 +755,7 @@
         // Empty list line + Enter → de-list it (same as Backspace at start).
         _jotEnterHandled = true;
         e.preventDefault();
+        jotUndoSnap();
         lineEl.classList.remove('list-line');
         lineEl.style.removeProperty('--level');
         lineEl.removeAttribute('data-bullet');
@@ -614,6 +766,7 @@
       if (e.key === 'Enter' && !e.shiftKey) {
         _jotEnterHandled = true;
         e.preventDefault();
+        jotUndoSnap();
         const sel = window.getSelection();
         const range = sel.getRangeAt(0);
         range.deleteContents();
@@ -704,6 +857,8 @@
       const w = document.getElementById('jot-welcome');
       if (w) w.remove();
       editor.innerHTML = entry.html;
+      jotUndoClear();
+      _undoStack.push({ html: editor.innerHTML, cur: 0 });
       jotCurrentId = entry.id;
       jotFromRecovery = false;
       editor.focus();
@@ -724,6 +879,8 @@
       jotCurrentId = null;
       jotFromRecovery = false;
       editor.innerHTML = '<div><br></div>';
+      jotUndoClear();
+      _undoStack.push({ html: editor.innerHTML, cur: 0 });
       editor.focus();
       const first = editor.firstChild;
       if (first) {
@@ -749,27 +906,23 @@
       const w = document.createElement('div');
       w.id = 'jot-welcome';
 
-      const isTouch = window.matchMedia('(pointer: coarse)').matches;
       let html = '<div><b>Jot</b></div><div><i>Start typing!</i></div><div><br></div>';
 
       if (sorted.length) {
         html += '<div><br></div>';
-        if (isTouch) {
-          html += '<div class="jot-new">+ Start a new jot</div><div><br></div>';
-        }
+        html += '<div class="jot-new">+ Start a new jot</div>';
+        html += '<div><br></div><div><br></div>';
         sorted.forEach((entry, i) => {
           if (i > 0) html += '<div><br></div>';
           html += `<div class="jot-entry" data-id="${entry.id}">[${jotFmt(entry.updatedAt)}] ${jotEsc(entry.firstLine || '(empty)')}</div>`;
         });
-        html += '<div><br></div>';
-        html += '<div class="jot-entry" data-recovery="1">Recovery</div>';
         html += '<div><br></div><div><br></div>';
-        html += '<div>Click an entry to open it.</div>';
-        html += '<div>Simply type to start a new entry.</div>';
-        html += '<div class="jot-clear">Press Backspace to clear all these entries.</div>';
+        html += '<div class="jot-entry" data-recovery="1">Recovery</div>';
+        html += '<div><br></div>';
+        html += '<div class="jot-clear">Reset (Backspace)</div>';
       }
 
-      html += '<div><br></div><div><u>v6</u></div><div><u>Lukas Henning 18/05/2026</u></div><div><br></div>';
+      html += '<div><br></div><div><u>v7</u></div><div><u>Lukas Henning 19/05/2026</u></div><div><br></div>';
       w.innerHTML = html;
       document.body.appendChild(w);
       w.scrollTop = 0;
@@ -992,6 +1145,20 @@
       // Scroll so the cursor never sits flush against the bottom of the viewport
       // (or the top of the on-screen keyboard). Use rAF so layout is settled.
       requestAnimationFrame(jotScrollToCursor);
+      // Debounced undo snapshot for regular typing — groups keystrokes within
+      // 800 ms into a single undo step; a custom op calling jotUndoSnap()
+      // cancels this timer and pushes immediately.
+      clearTimeout(_undoTimer);
+      _undoTimer = setTimeout(() => {
+        _undoTimer = null;
+        const state = { html: editor.innerHTML, cur: _undoCurPos() };
+        const last = _undoStack[_undoStack.length - 1];
+        if (!last || last.html !== state.html) {
+          _undoStack.push(state);
+          if (_undoStack.length > 200) _undoStack.shift();
+          _redoStack.length = 0;
+        }
+      }, 800);
     });
 
     function htmlToLines(str) {
@@ -1066,6 +1233,7 @@
     });
 
     editor.addEventListener('paste', (e) => {
+      jotUndoSnap();
       // URL-as-link: if there is a non-collapsed selection and the clipboard
       // holds only a URL (https?://... with no whitespace), wrap the selected
       // text in an <a> element pointing to that URL instead of replacing it.
@@ -1285,10 +1453,20 @@
       }
 
       e.clipboardData.setData('text/html', '<!-- jot -->' + htmlOut);
-      e.clipboardData.setData('text/plain', selectedLines.map(lineEl => {
+      e.clipboardData.setData('text/plain', selectedLines.map((lineEl, i) => {
+        // Clip first/last lines to the actual selection boundaries, just like
+        // lineContent() does for the HTML path — otherwise a partial selection
+        // puts the whole line on the clipboard for external paste targets.
+        const r = document.createRange();
+        r.selectNodeContents(lineEl);
+        if (i === 0 && lineEl.contains(range.startContainer))
+          r.setStart(range.startContainer, range.startOffset);
+        if (i === selectedLines.length - 1 && lineEl.contains(range.endContainer))
+          r.setEnd(range.endContainer, range.endOffset);
+        const text = r.toString();
         if (lineEl.classList.contains('list-line'))
-          return '  '.repeat(getLevel(lineEl)) + '- ' + lineEl.textContent;
-        return lineEl.textContent;
+          return '  '.repeat(getLevel(lineEl)) + '- ' + text;
+        return text;
       }).join('\n'));
     });
 
@@ -1350,13 +1528,13 @@
       document.getElementById('jtb-tab').addEventListener('click', () => doTab(false));
       document.getElementById('jtb-stab').addEventListener('click', () => doTab(true));
       document.getElementById('jtb-bold').addEventListener('click', () => {
-        jotAllowFormat = true; document.execCommand('bold'); jotAllowFormat = false;
+        jotUndoSnap(); jotAllowFormat = true; document.execCommand('bold'); jotAllowFormat = false;
       });
       document.getElementById('jtb-italic').addEventListener('click', () => {
-        jotAllowFormat = true; document.execCommand('italic'); jotAllowFormat = false;
+        jotUndoSnap(); jotAllowFormat = true; document.execCommand('italic'); jotAllowFormat = false;
       });
       document.getElementById('jtb-underline').addEventListener('click', () => {
-        jotAllowFormat = true; doUnderline(); jotAllowFormat = false;
+        jotUndoSnap(); jotAllowFormat = true; doUnderline(); jotAllowFormat = false;
       });
       // Show toolbar when editor is focused (e.g. returning from welcome screen).
       // No blur handler — toolbar stays visible for the lifetime of a document.
@@ -1404,7 +1582,19 @@
     }
 
     editor.addEventListener('beforeinput', (e) => {
-      if (e.inputType === 'insertParagraph') {
+      // iOS/Android system undo/redo gestures (three-finger swipe, shake, etc.)
+      // fire historyUndo / historyRedo beforeinput events. Intercept them so our
+      // custom stack handles the undo rather than the browser's native stack,
+      // which doesn't know about our DOM operations.
+      if (e.inputType === 'historyUndo') {
+        e.preventDefault();
+        _doUndo();
+        return;
+      } else if (e.inputType === 'historyRedo') {
+        e.preventDefault();
+        _doRedo();
+        return;
+      } else if (e.inputType === 'insertParagraph') {
         if (_jotEnterHandled) e.preventDefault();
         _jotEnterHandled = false; // reset for next keystroke
       } else if (e.inputType === 'insertLineBreak') {
@@ -1417,6 +1607,7 @@
         const lineEl = getLineEl();
         if (lineEl && isAtStart(lineEl)) {
           e.preventDefault();
+          jotUndoSnap();
           const isList = lineEl.classList.contains('list-line');
           if (!isList) { lineEl.classList.add('list-line'); setLevel(lineEl, 0); }
           if (e.data === '>') lineEl.dataset.bullet = 'arrow';
