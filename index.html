@@ -184,6 +184,8 @@
   <div id="block-cursor"></div>
   <div id="jot-toolbar">
     <div id="jot-toolbar-inner">
+      <button id="jtb-undo">↺</button>
+      <button id="jtb-redo">↻</button>
       <button id="jtb-stab">⇤</button>
       <button id="jtb-tab">⇥</button>
       <button id="jtb-bold">B</button>
@@ -526,15 +528,6 @@
                 node.textContent = node.textContent.replace(/​/g, '');
             }
 
-            // ── Replenish native REDO stack ──────────────────────────────────
-            // Insert a second ZWS, then immediately call execCommand('undo').
-            // The browser moves that entry from the native undo stack to the
-            // native redo stack and restores the DOM to state.html. Our
-            // beforeinput handler is gated by _undoApplying so it will not
-            // intercept the programmatic undo and call _doUndo().
-            _cursorToStart();
-            document.execCommand('insertText', false, '​');
-            document.execCommand('undo');
           } catch (_) {}
           _undoApplying = false;
           // Restore cursor to the snapshot's saved position.
@@ -1635,6 +1628,8 @@
         el.addEventListener('pointerdown', e => e.preventDefault())
       );
 
+      document.getElementById('jtb-undo').addEventListener('click', () => _doUndo());
+      document.getElementById('jtb-redo').addEventListener('click', () => _doRedo());
       document.getElementById('jtb-tab').addEventListener('click', () => doTab(false));
       document.getElementById('jtb-stab').addEventListener('click', () => doTab(true));
       document.getElementById('jtb-bold').addEventListener('click', () => {
