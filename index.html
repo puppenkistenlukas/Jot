@@ -404,7 +404,8 @@
     // events, and manage our own HTML + {line,col} cursor snapshots.
     const _undoStack = [];   // [{html, cur:{line,col}}]
     const _redoStack = [];
-    let   _undoTimer  = null;
+    let   _undoTimer         = null;
+    let   _historyGestureTimer = null; // debounces iOS historyUndo/Redo bursts
 
     // Save cursor as {line index in editor.children, col within that line}.
     // Line-scoped col avoids the flat-char-offset ambiguity at div boundaries.
@@ -526,6 +527,8 @@
       _redoStack.length = 0;
       clearTimeout(_undoTimer);
       _undoTimer = null;
+      clearTimeout(_historyGestureTimer);
+      _historyGestureTimer = null;
     }
 
     function doTab(shift) {
@@ -1586,13 +1589,18 @@
       // fire historyUndo / historyRedo beforeinput events. Intercept them so our
       // custom stack handles the undo rather than the browser's native stack,
       // which doesn't know about our DOM operations.
+      // iOS fires one event per native undo *unit* (word / character), so a single
+      // gesture can dispatch many events in rapid succession. Debounce to 80 ms so
+      // the entire burst counts as one step in our custom stack.
       if (e.inputType === 'historyUndo') {
         e.preventDefault();
-        _doUndo();
+        clearTimeout(_historyGestureTimer);
+        _historyGestureTimer = setTimeout(() => { _historyGestureTimer = null; _doUndo(); }, 80);
         return;
       } else if (e.inputType === 'historyRedo') {
         e.preventDefault();
-        _doRedo();
+        clearTimeout(_historyGestureTimer);
+        _historyGestureTimer = setTimeout(() => { _historyGestureTimer = null; _doRedo(); }, 80);
         return;
       } else if (e.inputType === 'insertParagraph') {
         if (_jotEnterHandled) e.preventDefault();
