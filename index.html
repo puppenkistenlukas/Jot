@@ -22,6 +22,8 @@
       caret-color: transparent;
       outline: none;
       overflow-wrap: break-word;
+      hyphens: auto;
+      -webkit-hyphens: auto;
       /* Suppress the iOS Cut/Copy/Paste/AutoFill callout on long-press */
       -webkit-touch-callout: none;
     }
@@ -199,32 +201,36 @@
        this template's innerHTML directly; no JS string escaping needed. -->
   <template id="jot-features-tpl">
     <div><b>Jot Features</b></div>
-    <div><i>Jot is a lightweight text editor that lives in one HTML file. It offers simple formatting, indented lists, continuously backs up your work in localStorage and exports itself into every document you save.</i></div>
+    <div><i>Jot is a lightweight text editor that lives in a single HTML file. It offers simple formatting, indented lists, continuously backs up your work in localStorage and exports itself into every document you save.</i></div>
     <div><br></div>
-    <div class="list-line" style="--level: 0;"><u>Save</u> any Jot document as HTML to export your document as a local file. You can continue work on the exported file, but it no longer backs up.</div>
+    <div class="list-line" style="--level: 0;"><u>Save</u> any Jot document as HTML to export a local file. You can continue work on the exported file, but it no longer backs up automatically.</div>
     <div><br></div>
-    <div class="list-line" style="--level: 0;">You can&nbsp;<b>bold</b>&nbsp;text, <i>italicise</i> or <u>underline</u> to highlight it.<br></div>
+    <div class="list-line" style="--level: 0;">You can <b>bold</b> text, <i>italicize</i> or <u>underline</u> to highlight it.<br></div>
     <div><br></div>
-    <div class="list-line" style="--level: 0;">Select Text and paste an URL to create a <a href="https://github.com/puppenkistenlukas/Jot" target="_blank" rel="noopener noreferrer">hyperlink</a>.&nbsp;&nbsp;</div>
+    <div class="list-line" style="--level: 0;">Select text and paste an URL to create a <a href="https://github.com/puppenkistenlukas/Jot" target="_blank" rel="noopener noreferrer">hyperlink</a>.  </div>
     <div><br></div>
-    <div class="list-line" style="--level: 0;">Press <u>-</u>, <u>+</u> or <u>&gt;</u> at the very beginning of a line to create a list item or change its bullet style.</div>
-    <div class="list-line" style="--level: 1;" data-bullet="plus">Press <u>Tab</u> to increase a list item's indent level...</div>
-    <div class="list-line" style="--level: 2;" data-bullet="arrow">... like so.</div>
-    <div class="list-line" style="--level: 3;" data-bullet="plus">This works on multiple levels.</div>
-    <div class="list-line" style="--level: 2;" data-bullet="arrow"><u>Shift &amp; Tab</u> decreases the indent level.</div>
+    <div class="list-line" style="--level: 0;">Type <u>-</u>, <u>+</u> or <u>&gt;</u> at the very beginning of a line to create a list item or change its bullet style.</div>
+    <div class="list-line" style="--level: 1;" data-bullet="plus">Swipe right or press <u>Tab</u> to increase a list item's indentation level.</div>
+    <div class="list-line" style="--level: 2;" data-bullet="arrow">Like so.</div>
+    <div class="list-line" style="--level: 1;" data-bullet="plus">Swipe left or press <u>Shift+Tab</u> to decrease the indentation level.</div>
     <div><br></div>
-    <div>Press <u>Backspace</u>&nbsp;or <u>Enter</u> at the very beginning of a list item to turn it into a regular line of text.</div>
+    <div>Type <u>Backspace</u> or <u>Enter</u> at the very beginning of a list item to turn it into a regular line of text.</div>
     <div><br></div>
-    <div>Use <u>Tab</u> in regular (<i>non-list</i>) lines to create simple tables like so:</div>
+    <div>Swipe or use <u>Tab</u> in regular (<i>non-list</i>) lines to create simple tables like so:</div>
     <div><br></div>
-    <div><b>Player&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Score&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Rounds&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Text</b></div>
-    <div>Lukas&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;19&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Hi!</div>
-    <div>Muriel&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;29&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&lt;3</div>
-    <div>Bacon&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;07&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(°œ°)</div>
+    <div><b>Player      Score       Comment</b></div>
+    <div>Lukas       19          Hello!</div>
+    <div>Muriel      29          &lt;3</div>
+    <div>Bacon       07          (°œ°)</div>
     <div><br></div>
-    <div>Every new JOT document creates a <b>local backup</b> in your browser's storage. Open a new Jot window or tab to view, open or clear entries. Access an overview with <u>Escape</u>. Completely empty documents disappear from the list. <b>Recovery</b> holds snapshots of the ten last documents you opened, in case there's an accident.</div>
+    <div>Every new jot is automatically <b>backed up</b> in your browser's local storage.</div>
+    <div class="list-line" style="--level: 0;"><u>Swipe right from the left edge of the screen</u> or press <u>Escape</u> to access an <b>overview</b>.</div>
+    <div class="list-line" style="--level: 1;" data-bullet="arrow"><i>Completely empty jots disappear from the list.</i></div>
+    <div class="list-line" style="--level: 0;">Use <b>Reset</b> to clear all entries.</div>
+    <div class="list-line" style="--level: 0;">Use <b>Recovery</b> to access snapshots of the ten last jots you re-opened, in case there's an accident.</div>
     <div><br></div>
-    <div><b><i>Pro tip:</i></b> <i>Try pasting images or web content into your Jot 🪄</i></div>
+    <div><b><i>Pro tip:</i></b> <i>Try pasting images or web content into your jot 🪄</i></div>
+    <div><br></div>
     <div><br></div>
   </template>
 
@@ -987,7 +993,7 @@
         html += '<div class="jot-clear">Reset (Backspace)</div>';
       }
 
-      html += '<div><br></div><div><u>v7</u></div><div><u>Lukas Henning 19/05/2026</u></div><div><br></div>';
+      html += '<div><br></div><div><u>v8</u></div><div><u>Lukas Henning 19/05/2026</u></div><div><br></div>';
       w.innerHTML = html;
       document.body.appendChild(w);
       w.scrollTop = 0;
