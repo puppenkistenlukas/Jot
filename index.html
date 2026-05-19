@@ -406,6 +406,7 @@
     const _redoStack = [];
     let   _undoTimer         = null;
     let   _historyGestureTimer = null; // debounces iOS historyUndo/Redo bursts
+    let   _undoApplying      = false;  // true while ZWS replenishment is running
 
     // Save cursor as {line index in editor.children, col within that line}.
     // Line-scoped col avoids the flat-char-offset ambiguity at div boundaries.
@@ -487,6 +488,42 @@
       _undoSetCur(state.cur);
       clearTimeout(jotTimer);
       if (jotCurrentId) jotTimer = setTimeout(jotSaveCurrent, 500);
+      // On touch devices, iOS keeps its own native undo stack (~6 entries).
+      // Each e.preventDefault() on a historyUndo event pops one native entry
+      // without adding a replacement, so after ~6 undos iOS reports "nothing
+      // to undo". Fix: insert a zero-width space via execCommand (which adds
+      // one native entry), then strip it from the DOM directly via TreeWalker
+      // (no execCommand → no second native entry). This refills the native
+      // stack by one entry per undo step, keeping it perpetually non-empty.
+      if (window.matchMedia('(pointer: coarse)').matches) {
+        _undoApplying = true;
+        setTimeout(() => {
+          try {
+            editor.focus();
+            // Place cursor at start of first child so the ZWS is inserted at a
+            // predictable location (rather than wherever iOS put the caret).
+            const first = editor.firstChild;
+            if (first) {
+              const r = document.createRange();
+              r.setStart(first, 0);
+              r.collapse(true);
+              window.getSelection().removeAllRanges();
+              window.getSelection().addRange(r);
+            }
+            document.execCommand('insertText', false, '​');
+            // Strip ZWS without execCommand (no new native entry on the stack).
+            const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+            let node;
+            while ((node = walker.nextNode())) {
+              if (node.textContent.includes('​'))
+                node.textContent = node.textContent.replace(/​/g, '');
+            }
+          } catch (_) {}
+          _undoApplying = false;
+          // Restore cursor to the snapshot's saved position.
+          _undoSetCur(state.cur);
+        }, 0);
+      }
     }
 
     // Perform one undo step. Handles two cases:
@@ -529,6 +566,7 @@
       _undoTimer = null;
       clearTimeout(_historyGestureTimer);
       _historyGestureTimer = null;
+      _undoApplying = false;
     }
 
     function doTab(shift) {
@@ -1140,6 +1178,8 @@
     // Auto-save
     let jotTimer = null;
     editor.addEventListener('input', () => {
+      // Suppress spurious snapshots while ZWS replenishment is running.
+      if (_undoApplying) return;
       const w = document.getElementById('jot-welcome');
       if (w) w.remove();
       if (!jotCurrentId) jotCreate();
@@ -1415,13 +1455,40 @@
 
       const blocks = [];
       selectedLines.forEach((lineEl, i) => {
-        const html = lineContent(lineEl, i === 0, i === selectedLines.length - 1);
+        const isFirst = i === 0;
+        const isLast  = i === selectedLines.length - 1;
+        const html = lineContent(lineEl, isFirst, isLast);
         if (lineEl.classList.contains('list-line')) {
-          const level = getLevel(lineEl);
-          const last = blocks[blocks.length - 1];
-          const bullet = lineEl.dataset.bullet || null;
-          if (last && last.type === 'list') last.items.push({ level, html, bullet });
-          else blocks.push({ type: 'list', items: [{ level, html, bullet }] });
+          // A list line that is only partially selected (selection clips either
+          // its start or its end) should paste as plain text, not as a bullet
+          // item — otherwise copying a single word inside a list line puts a
+          // bullet in front of it when pasted outside the editor.
+          let partial = false;
+          if (isFirst && lineEl.contains(range.startContainer)) {
+            try {
+              const tr = document.createRange();
+              tr.setStart(lineEl, 0);
+              tr.setEnd(range.startContainer, range.startOffset);
+              if (tr.toString() !== '') partial = true;
+            } catch (_) {}
+          }
+          if (!partial && isLast && lineEl.contains(range.endContainer)) {
+            try {
+              const tr = document.createRange();
+              tr.setStart(range.endContainer, range.endOffset);
+              tr.setEnd(lineEl, lineEl.childNodes.length);
+              if (tr.toString() !== '') partial = true;
+            } catch (_) {}
+          }
+          if (partial) {
+            blocks.push({ type: 'p', html: lineEl.textContent ? html : '' });
+          } else {
+            const level = getLevel(lineEl);
+            const last  = blocks[blocks.length - 1];
+            const bullet = lineEl.dataset.bullet || null;
+            if (last && last.type === 'list') last.items.push({ level, html, bullet });
+            else blocks.push({ type: 'list', items: [{ level, html, bullet }] });
+          }
         } else {
           blocks.push({ type: 'p', html: lineEl.textContent ? html : '' });
         }
@@ -1460,15 +1527,38 @@
         // Clip first/last lines to the actual selection boundaries, just like
         // lineContent() does for the HTML path — otherwise a partial selection
         // puts the whole line on the clipboard for external paste targets.
+        const isFirst = i === 0;
+        const isLast  = i === selectedLines.length - 1;
         const r = document.createRange();
         r.selectNodeContents(lineEl);
-        if (i === 0 && lineEl.contains(range.startContainer))
+        if (isFirst && lineEl.contains(range.startContainer))
           r.setStart(range.startContainer, range.startOffset);
-        if (i === selectedLines.length - 1 && lineEl.contains(range.endContainer))
+        if (isLast && lineEl.contains(range.endContainer))
           r.setEnd(range.endContainer, range.endOffset);
         const text = r.toString();
-        if (lineEl.classList.contains('list-line'))
-          return '  '.repeat(getLevel(lineEl)) + '- ' + text;
+        if (lineEl.classList.contains('list-line')) {
+          // Only prepend the bullet prefix when the whole line is selected.
+          // A partial selection (word or phrase within the line) should not
+          // carry the bullet when pasted into an external app.
+          let partial = false;
+          if (isFirst && lineEl.contains(range.startContainer)) {
+            try {
+              const tr = document.createRange();
+              tr.setStart(lineEl, 0);
+              tr.setEnd(range.startContainer, range.startOffset);
+              if (tr.toString() !== '') partial = true;
+            } catch (_) {}
+          }
+          if (!partial && isLast && lineEl.contains(range.endContainer)) {
+            try {
+              const tr = document.createRange();
+              tr.setStart(range.endContainer, range.endOffset);
+              tr.setEnd(lineEl, lineEl.childNodes.length);
+              if (tr.toString() !== '') partial = true;
+            } catch (_) {}
+          }
+          if (!partial) return '  '.repeat(getLevel(lineEl)) + '- ' + text;
+        }
         return text;
       }).join('\n'));
     });
